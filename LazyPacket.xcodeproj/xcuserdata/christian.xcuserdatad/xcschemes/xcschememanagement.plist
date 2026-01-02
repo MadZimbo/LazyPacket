@@ -4,10 +4,28 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
-		<key>LazyPacket.xcscheme_^#shared#^_</key>
+		<key>LazyPacket 1.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>0</integer>
+			<integer>1</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>AACC041A2F00289F00C35FA6</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>AACC042D2F0028A100C35FA6</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>AACC04372F0028A100C35FA6</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

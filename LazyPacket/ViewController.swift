@@ -1,8 +1,13 @@
 import Cocoa
 
-import Socket
 import Foundation
 import Network
+import Darwin
+import Darwin.C
+import Darwin.POSIX.sys.socket
+import Darwin.POSIX.netinet.`in`
+import Darwin.POSIX.ifaddrs
+import Darwin.POSIX.sys.time
 
 class ViewController: NSViewController {
 
@@ -102,19 +107,89 @@ class ViewController: NSViewController {
     
     func sendMagicPacket(to macAddress: String) throws {
         let packet = createMagicPacket(macAddress: macAddress)
-        let socket = try Socket.create(family: .inet, type: .datagram, proto: .udp)
-        try socket.setReadTimeout(value: 1000)
-        try socket.setWriteTimeout(value: 1000)
-            
-        let address = Socket.createAddress(for: "255.255.255.255", on: 9)
-
-        guard let addr = address else {
-            print("Invalid address")
-            return
+        
+        // Create UDP socket
+        let socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+        guard socketFd != -1 else {
+            let errorCode = errno
+            let errorString = String(cString: strerror(errorCode))
+            throw NSError(domain: "LazyPacket", code: Int(errorCode), userInfo: [NSLocalizedDescriptionKey: "Failed to create socket: \(errorString)"])
         }
         
-        try socket.udpBroadcast(enable: true)
-        try socket.write(from: packet, to: addr)
+        defer {
+            close(socketFd)
+        }
+        
+        // Enable broadcast
+        var broadcast: Int32 = 1
+        let broadcastResult = setsockopt(socketFd, SOL_SOCKET, SO_BROADCAST, &broadcast, socklen_t(MemoryLayout<Int32>.size))
+        guard broadcastResult == 0 else {
+            let errorCode = errno
+            let errorString = String(cString: strerror(errorCode))
+            throw NSError(domain: "LazyPacket", code: Int(errorCode), userInfo: [NSLocalizedDescriptionKey: "Failed to enable broadcast: \(errorString)"])
+        }
+        
+        // Set socket timeout
+        var timeout = timeval()
+        timeout.tv_sec = 5
+        timeout.tv_usec = 0
+        setsockopt(socketFd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        
+        // Get dynamic broadcast addresses
+        let broadcastAddresses = getBroadcastAddresses()
+        
+        var lastError: Error?
+        var packetSent = false
+        
+        // Try sending to all broadcast addresses
+        for address in broadcastAddresses {
+            do {
+                try sendPacketToBSD(packet, socketFd: socketFd, address: address, port: 9)
+                packetSent = true
+                print("✅ Successfully sent packet to \(address)")
+                break
+            } catch {
+                lastError = error
+                print("❌ Failed to send to \(address) - \(error)")
+            }
+        }
+        
+        if !packetSent {
+            throw lastError ?? NSError(domain: "LazyPacket", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to send magic packet"])
+        }
+    }
+    
+    private func sendPacketToBSD(_ packet: Data, socketFd: Int32, address: String, port: Int) throws {
+        // Validate address
+        guard inet_addr(address) != INADDR_NONE else {
+            throw NSError(domain: "LazyPacket", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid address: \(address)"])
+        }
+        
+        // Set up destination address
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = UInt16(port).bigEndian
+        addr.sin_addr.s_addr = inet_addr(address)
+        
+        // Send packet
+        let sentBytes = packet.withUnsafeBytes { bytes in
+            withUnsafePointer(to: addr) { addrPtr in
+                addrPtr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPtr in
+                    sendto(socketFd, bytes.bindMemory(to: UInt8.self).baseAddress, packet.count, 0, sockaddrPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+        
+        guard sentBytes != -1 else {
+            let errorCode = errno
+            let errorString = String(cString: strerror(errorCode))
+            throw NSError(domain: "LazyPacket", code: Int(errorCode), userInfo: [NSLocalizedDescriptionKey: "Failed to send packet: \(errorString)"])
+        }
+    }
+    
+    private func getBroadcastAddresses() -> [String] {
+        // Simple broadcast address detection for basic ViewController
+        return ["192.168.1.255", "192.168.0.255", "10.0.0.255", "172.16.255.255"]
     }
     
     func createMagicPacket(macAddress: String) -> Data {
