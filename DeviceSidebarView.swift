@@ -1,7 +1,5 @@
 import SwiftUI
 
-import SwiftUI
-
 // MARK: - Device Sidebar
 struct DeviceSidebarView: View {
     @EnvironmentObject var viewModel: WakeOnLANViewModel

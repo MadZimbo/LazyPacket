@@ -1,53 +1,7 @@
 import Cocoa
-import Foundation
-import Network
-import Darwin
-
-class ModernViewController: NSViewController {
-    
-    // MARK: - Modern Color Palette
-    private struct Colors {
-        static let primary = NSColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0) // Modern blue
-        static let secondary = NSColor(red: 0.17, green: 0.24, blue: 0.31, alpha: 1.0) // Dark slate
-        static let success = NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1.0) // Green
-        static let warning = NSColor(red: 1.0, green: 0.58, blue: 0.0, alpha: 1.0) // Orange
-        static let danger = NSColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0) // Red
-        static let background = NSColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0) // Dark background
-        static let surface = NSColor(red: 0.15, green: 0.15, blue: 0.16, alpha: 1.0) // Card background
-        static let text = NSColor(red: 0.92, green: 0.92, blue: 0.96, alpha: 1.0) // Light text
-        static let textSecondary = NSColor(red: 0.68, green: 0.68, blue: 0.73, alpha: 1.0) // Secondary text
-    }
-    
-    @IBOutlet weak var macAddressField: NSTextField!
-    @IBOutlet weak var deviceNameField: NSTextField!
-    @IBOutlet weak var addButton: NSButton!
-    @IBOutlet weak var wakeButton: NSButton!
-    @IBOutlet weak var deleteButton: NSButton!
-    @IBOutlet weak var tableView: NSTableView!
-    @IBOutlet weak var mainContentView: NSView!
-    @IBOutlet weak var controlsContainer: NSView!
-    @IBOutlet weak var statusLabel: NSTextField!
-    
-    var devices: [(macAddress: String, deviceName: String)] = []
-    private var isValidMacFormat = false
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        setupModernUI()
-        setupObservers()
-        setupTableView()
-        loadDevices()
-        updateButtonStates()
-    }
-    
-    // MARK: - Modern UI Setup
-    private func setupModernUI() {
-        // Main window styling
-        view.wantsLayer = true
-        view.layer?.backgroundColor = Colors.background.cgColor
-        
-        // Setup modern card-like containers
-        setupContainer(controlsContainer, cornerRadius: 16)
+// DELETED: Legacy AppKit/NSViewController code
+// This file has been removed as part of migration to SwiftUI
+// All functionality moved to WakeOnLANViewModel.swift and SwiftUI views
         
         // Style text fields with modern appearance
         styleTextField(macAddressField, placeholder: "Enter MAC Address (AA:BB:CC:DD:EE:FF)")

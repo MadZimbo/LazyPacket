@@ -92,12 +92,7 @@ class WakeOnLANViewModel: ObservableObject {
         }
     }
     
-    func updateDevice(_ device: SavedDevice) {
-        if let index = savedDevices.firstIndex(where: { $0.id == device.id }) {
-            savedDevices[index] = device
-            saveDevices()
-        }
-    }
+
     
     // MARK: - Wake-on-LAN Operations
     func sendWakePacket(to macAddress: String, deviceName: String? = nil) {

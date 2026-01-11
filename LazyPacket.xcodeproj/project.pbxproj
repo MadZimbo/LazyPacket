@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA92CBF82F08379F008DB807 /* ModernViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA92CBF72F08379F008DB807 /* ModernViewController.swift */; };
-		AA92CBFA2F0837F0008DB807 /* SwiftUILazyPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA92CBF92F0837F0008DB807 /* SwiftUILazyPacket.swift */; };
 		AA92CBFC2F08381D008DB807 /* IconDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA92CBFB2F08381D008DB807 /* IconDesignSystem.swift */; };
 		AA92CC002F083981008DB807 /* LazyPacketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA92CBFF2F083981008DB807 /* LazyPacketApp.swift */; };
 		AA92CC022F083986008DB807 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA92CC012F083986008DB807 /* ContentView.swift */; };
@@ -37,8 +35,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		AA92CBF72F08379F008DB807 /* ModernViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernViewController.swift; sourceTree = "<group>"; };
-		AA92CBF92F0837F0008DB807 /* SwiftUILazyPacket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUILazyPacket.swift; sourceTree = "<group>"; };
 		AA92CBFB2F08381D008DB807 /* IconDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconDesignSystem.swift; sourceTree = "<group>"; };
 		AA92CBFF2F083981008DB807 /* LazyPacketApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyPacketApp.swift; sourceTree = "<group>"; };
 		AA92CC012F083986008DB807 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -103,8 +99,6 @@
 				AACC04312F0028A100C35FA6 /* LazyPacketTests */,
 				AACC043B2F0028A100C35FA6 /* LazyPacketUITests */,
 				AACC041C2F00289F00C35FA6 /* Products */,
-				AA92CBF72F08379F008DB807 /* ModernViewController.swift */,
-				AA92CBF92F0837F0008DB807 /* SwiftUILazyPacket.swift */,
 				AA92CBFB2F08381D008DB807 /* IconDesignSystem.swift */,
 				AA92CBFF2F083981008DB807 /* LazyPacketApp.swift */,
 				AA92CC012F083986008DB807 /* ContentView.swift */,
@@ -275,11 +269,9 @@
 			files = (
 				AA92CC002F083981008DB807 /* LazyPacketApp.swift in Sources */,
 				AA92CC0E2F083EE7008DB807 /* Colors.swift in Sources */,
-				AA92CBFA2F0837F0008DB807 /* SwiftUILazyPacket.swift in Sources */,
 				AA92CC082F0839F9008DB807 /* AddDeviceSheet.swift in Sources */,
 				AA92CC042F0839AB008DB807 /* DeviceSidebarView.swift in Sources */,
 				AA92CC0A2F083A27008DB807 /* WakeOnLANViewModel.swift in Sources */,
-				AA92CBF82F08379F008DB807 /* ModernViewController.swift in Sources */,
 				AA92CC022F083986008DB807 /* ContentView.swift in Sources */,
 				AA92CBFC2F08381D008DB807 /* IconDesignSystem.swift in Sources */,
 				AA92CC062F0839D9008DB807 /* MainContentView.swift in Sources */,
