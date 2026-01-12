@@ -51,6 +51,25 @@ struct DeviceSidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Add new device")
+                    
+                    Button {
+                        viewModel.checkAllDeviceStatus()
+                        viewModel.triggerHaptic(.light)
+                    } label: {
+                        Image(systemName: viewModel.isCheckingDeviceStatus ? "arrow.clockwise" : "arrow.clockwise.circle")
+                            .font(.title3)
+                            .foregroundColor(.primaryBlue)
+                            .symbolRenderingMode(.hierarchical)
+                            .rotationEffect(.degrees(viewModel.isCheckingDeviceStatus ? 360 : 0))
+                            .animation(
+                                viewModel.isCheckingDeviceStatus ? 
+                                .linear(duration: 1.0).repeatForever(autoreverses: false) : .default,
+                                value: viewModel.isCheckingDeviceStatus
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh device status")
+                    .disabled(viewModel.isCheckingDeviceStatus)
                 }
                 
                 // Search bar
@@ -232,28 +251,71 @@ struct DeviceRowView: View {
 struct DeviceStatusIndicator: View {
     let device: SavedDevice
     @State private var isPulsing = false
+    @EnvironmentObject var viewModel: WakeOnLANViewModel
     
     var body: some View {
         ZStack {
+            // Outer ring for emphasis
             Circle()
-                .fill(device.isOnline ? Color.successGreen : Color.borderColor)
-                .frame(width: 12, height: 12)
+                .fill(statusColor.opacity(0.2))
+                .frame(width: 16, height: 16)
             
+            // Main status indicator
+            Circle()
+                .fill(statusColor)
+                .frame(width: 10, height: 10)
+            
+            // Pulsing effect for online devices
             if device.isOnline {
                 Circle()
                     .fill(Color.successGreen)
                     .frame(width: 8, height: 8)
-                    .scaleEffect(isPulsing ? 1.2 : 1.0)
-                    .opacity(isPulsing ? 0.6 : 1.0)
+                    .scaleEffect(isPulsing ? 1.3 : 1.0)
+                    .opacity(isPulsing ? 0.4 : 1.0)
                     .animation(
-                        .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        .easeInOut(duration: 1.8).repeatForever(autoreverses: true),
                         value: isPulsing
                     )
                     .onAppear {
                         isPulsing = true
                     }
             }
+            
+            // Checking indicator
+            if viewModel.isCheckingDeviceStatus {
+                Circle()
+                    .fill(Color.primaryBlue.opacity(0.3))
+                    .frame(width: 12, height: 12)
+                    .scaleEffect(isPulsing ? 1.2 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                        value: isPulsing
+                    )
+            }
         }
+        .onTapGesture {
+            // Manual status check on tap
+            viewModel.forceCheckDeviceStatus(device)
+            viewModel.triggerHaptic(.light)
+        }
+        .help(helpText)
+    }
+    
+    private var statusColor: Color {
+        if viewModel.isCheckingDeviceStatus {
+            return .primaryBlue
+        }
+        return device.isOnline ? .successGreen : .errorRed
+    }
+    
+    private var helpText: String {
+        if viewModel.isCheckingDeviceStatus {
+            return "Checking device status..."
+        }
+        
+        let statusText = device.isOnline ? "Online" : "Offline"
+        let lastCheck = device.lastStatusCheck?.formatted(date: .omitted, time: .shortened) ?? "Never"
+        return "\(device.name) is \(statusText)\nLast checked: \(lastCheck)\nTap to check now"
     }
 }
 
@@ -296,6 +358,12 @@ struct DeviceContextMenu: View {
         }
         
         Button {
+            viewModel.forceCheckDeviceStatus(device)
+        } label: {
+            Label("Check Status", systemImage: "magnifyingglass")
+        }
+        
+        Button {
             viewModel.selectDevice(device)
         } label: {
             Label("Select", systemImage: "checkmark.circle")
@@ -321,11 +389,11 @@ struct StatusFooterView: View {
                 .background(Color.borderColor)
             
             HStack {
-                Image(systemName: "info.circle")
+                Image(systemName: statusIcon)
                     .foregroundColor(.textSecondary)
                     .font(.caption)
                 
-                Text(viewModel.statusMessage)
+                Text(statusText)
                     .font(.caption)
                     .foregroundColor(.textSecondary)
                 
@@ -334,6 +402,43 @@ struct StatusFooterView: View {
                 if viewModel.isNetworkActive {
                     NetworkActivityIndicator(isActive: viewModel.isNetworkActive)
                 }
+                
+                if viewModel.isCheckingDeviceStatus {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .primaryBlue))
+                            .scaleEffect(0.6)
+                        
+                        Text("Checking devices...")
+                            .font(.caption2)
+                            .foregroundColor(.primaryBlue)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var statusIcon: String {
+        if viewModel.isCheckingDeviceStatus {
+            return "magnifyingglass"
+        } else if viewModel.isNetworkActive {
+            return "wifi"
+        } else {
+            return "info.circle"
+        }
+    }
+    
+    private var statusText: String {
+        if viewModel.isCheckingDeviceStatus {
+            return "Checking device connectivity..."
+        } else {
+            let onlineCount = viewModel.savedDevices.filter { $0.isOnline }.count
+            let totalCount = viewModel.savedDevices.count
+            
+            if totalCount == 0 {
+                return viewModel.statusMessage
+            } else {
+                return "\(onlineCount)/\(totalCount) devices online • \(viewModel.statusMessage)"
             }
         }
     }

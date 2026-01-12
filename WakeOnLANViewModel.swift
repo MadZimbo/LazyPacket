@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import Combine
+import Network
 
 #if canImport(Darwin)
 import Darwin
@@ -9,6 +10,7 @@ import Darwin.POSIX.sys.socket
 import Darwin.POSIX.netinet.`in`
 import Darwin.POSIX.ifaddrs
 import Darwin.POSIX.sys.time
+import Darwin.POSIX.netdb
 #endif
 
 // MARK: - Wake-on-LAN ViewModel
@@ -20,33 +22,50 @@ class WakeOnLANViewModel: ObservableObject {
     @Published var statusMessage: String = "Ready to send Wake-on-LAN packets"
     @Published var isNetworkActive: Bool = false
     @Published var isSending: Bool = false
+    @Published var isCheckingDeviceStatus: Bool = false
     
     private let userDefaults = UserDefaults.standard
     private let devicesKey = "SavedDevices"
     private let activityLogKey = "ActivityLog"
     
+    // Network connectivity monitoring
+    private let deviceStatusQueue = DispatchQueue(label: "device-status-check", qos: .background)
+    
     init() {
         loadDevices()
+        normalizeAllDeviceMACs() // Ensure all MAC addresses are in consistent uppercase format
         loadActivityLog()
+        checkAllDeviceStatus() // Initial check at startup
     }
     
     // MARK: - Device Management
     func addDevice(_ device: SavedDevice) {
+        // Normalize MAC address to uppercase for consistency
+        let normalizedMAC = device.macAddress.uppercased()
+        
         // Check for duplicates
-        if savedDevices.contains(where: { $0.macAddress.lowercased() == device.macAddress.lowercased() }) {
-            logActivity("Device with MAC \(device.macAddress) already exists", type: .warning)
+        if savedDevices.contains(where: { $0.macAddress.uppercased() == normalizedMAC }) {
+            logActivity("Device with MAC \(normalizedMAC) already exists", type: .warning)
             return
         }
         
+        // Create new device with normalized MAC
+        let normalizedDevice = SavedDevice(
+            name: device.name,
+            macAddress: normalizedMAC,
+            isOnline: device.isOnline,
+            deviceType: device.deviceType
+        )
+        
         withAnimation(.easeInOut) {
-            savedDevices.append(device)
+            savedDevices.append(normalizedDevice)
         }
         
         saveDevices()
-        logActivity("Added device '\(device.name)'", type: .success)
+        logActivity("Added device '\(normalizedDevice.name)'", type: .success)
         
         // Auto-select the newly added device
-        selectDevice(device)
+        selectDevice(normalizedDevice)
     }
     
     func deleteDevice(_ device: SavedDevice) {
@@ -89,6 +108,30 @@ class WakeOnLANViewModel: ObservableObject {
     func selectDevice(_ device: SavedDevice) {
         withAnimation(.easeInOut(duration: 0.2)) {
             selectedDevice = device
+        }
+    }
+    
+    func normalizeAllDeviceMACs() {
+        print("🔧 Normalizing all device MAC addresses to uppercase...")
+        var hasChanges = false
+        
+        for i in savedDevices.indices {
+            let originalMAC = savedDevices[i].macAddress
+            let normalizedMAC = originalMAC.uppercased()
+            
+            if originalMAC != normalizedMAC {
+                print("🔧 Normalizing: '\(originalMAC)' -> '\(normalizedMAC)'")
+                savedDevices[i].macAddress = normalizedMAC
+                hasChanges = true
+            }
+        }
+        
+        if hasChanges {
+            saveDevices()
+            logActivity("Normalized MAC addresses to uppercase format", type: .info)
+            print("🔧 MAC address normalization complete")
+        } else {
+            print("🔧 All MAC addresses already normalized")
         }
     }
     
@@ -646,6 +689,307 @@ class WakeOnLANViewModel: ObservableObject {
         print("=== End Test ===")
     }
     
+    // MARK: - Device Status Monitoring
+    func checkAllDeviceStatus() {
+        guard !savedDevices.isEmpty else { return }
+        
+        Task {
+            await MainActor.run {
+                self.isCheckingDeviceStatus = true
+            }
+            
+            // Simple ping-like check for each device
+            for (index, device) in self.savedDevices.enumerated() {
+                let isOnline = await self.pingDevice(macAddress: device.macAddress)
+                
+                // Update device status on main thread
+                await MainActor.run {
+                    if self.savedDevices.indices.contains(index) && self.savedDevices[index].id == device.id {
+                        let wasOnline = self.savedDevices[index].isOnline
+                        self.savedDevices[index].isOnline = isOnline
+                        self.savedDevices[index].lastStatusCheck = Date()
+                        
+                        // Update selected device if it matches
+                        if self.selectedDevice?.id == device.id {
+                            self.selectedDevice = self.savedDevices[index]
+                        }
+                        
+                        // Log status changes
+                        if wasOnline != isOnline {
+                            let statusText = isOnline ? "came online" : "went offline"
+                            let logType: ActivityLogItem.ActivityType = isOnline ? .success : .warning
+                            self.logActivity("Device '\(device.name)' \(statusText)", type: logType)
+                        }
+                    }
+                }
+            }
+            
+            await MainActor.run {
+                self.isCheckingDeviceStatus = false
+                self.saveDevices() // Persist updated status
+            }
+        }
+    }
+    
+    func forceCheckDeviceStatus(_ device: SavedDevice) {
+        Task {
+            let isOnline = await self.pingDevice(macAddress: device.macAddress)
+            
+            await MainActor.run {
+                if let index = self.savedDevices.firstIndex(where: { $0.id == device.id }) {
+                    self.savedDevices[index].isOnline = isOnline
+                    self.savedDevices[index].lastStatusCheck = Date()
+                    
+                    if self.selectedDevice?.id == device.id {
+                        self.selectedDevice = self.savedDevices[index]
+                    }
+                    
+                    let statusText = isOnline ? "online" : "offline"
+                    let logType: ActivityLogItem.ActivityType = isOnline ? .success : .info
+                    self.logActivity("Device '\(device.name)' is \(statusText)", type: logType)
+                    
+                    self.saveDevices()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Device Ping (Simple and Reliable)
+    private func pingDevice(macAddress: String) async -> Bool {
+        // First, try to get the IP from ARP table
+        if let ip = await getIPFromARP(macAddress: macAddress) {
+            return await basicPing(ip: ip)
+        }
+        
+        // If not found in ARP, device is offline
+        return false
+    }
+    
+    private func basicPing(ip: String) async -> Bool {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .background).async {
+                let task = Process()
+                
+                // Use the most basic ping command available
+                task.launchPath = "/sbin/ping"
+                task.arguments = ["-c", "1", ip]
+                
+                // Redirect output to avoid any issues
+                task.standardOutput = FileHandle.nullDevice
+                task.standardError = FileHandle.nullDevice
+                
+                print("🏓 Basic ping to \(ip)")
+                task.launch()
+                task.waitUntilExit()
+                
+                let isOnline = task.terminationStatus == 0
+                print("🏓 Ping result: \(isOnline ? "✅ ONLINE" : "❌ OFFLINE")")
+                
+                continuation.resume(returning: isOnline)
+            }
+        }
+    }
+    
+    private func getIPFromARP(macAddress: String) async -> String? {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .background).async {
+                print("🔍 Looking up IP for MAC: \(macAddress)")
+                
+                let task = Process()
+                task.launchPath = "/usr/sbin/arp"
+                task.arguments = ["-a"]
+                
+                let pipe = Pipe()
+                task.standardOutput = pipe
+                task.standardError = FileHandle.nullDevice
+                
+                task.launch()
+                task.waitUntilExit()
+                
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+                
+                print("🔍 Searching for stored MAC: '\(macAddress)'")
+                
+                // Normalize the saved MAC for comparison (remove separators, lowercase)
+                let normalizedSavedMAC = macAddress
+                    .replacingOccurrences(of: ":", with: "")
+                    .replacingOccurrences(of: "-", with: "")
+                    .replacingOccurrences(of: ".", with: "")
+                    .lowercased()
+                
+                print("🔍 Normalized saved MAC: '\(normalizedSavedMAC)'")
+                
+                // Parse ARP table output
+                let lines = output.components(separatedBy: .newlines)
+                for line in lines {
+                    // Skip empty lines
+                    guard !line.isEmpty else { continue }
+                    
+                    // Look for IP in parentheses and ANY MAC address format in the line
+                    // ARP output typically looks like: hostname (192.168.1.100) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]
+                    // Note: macOS ARP can show MACs with single-digit bytes like 0:11:32 instead of 00:11:32
+                    if let ipMatch = line.range(of: "\\((\\d+\\.\\d+\\.\\d+\\.\\d+)\\)", options: .regularExpression) {
+                        let ip = String(line[ipMatch]).replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "")
+                        
+                        // Try to find MAC address - allow 1 or 2 hex digits per byte
+                        // Pattern handles both: 0:11:32:cf:b0:a3 and 00:11:32:cf:b0:a3
+                        if let macMatch = line.range(of: "([0-9a-fA-F]{1,2}:[0-9a-fA-F]{1,2}:[0-9a-fA-F]{1,2}:[0-9a-fA-F]{1,2}:[0-9a-fA-F]{1,2}:[0-9a-fA-F]{1,2})", options: .regularExpression) {
+                            let foundMAC = String(line[macMatch])
+                            
+                            // Normalize the found MAC for comparison (pad single digits with leading zero, remove separators)
+                            let macComponents = foundMAC.split(separator: ":")
+                            let paddedComponents = macComponents.map { component in
+                                component.count == 1 ? "0\(component)" : String(component)
+                            }
+                            let normalizedFoundMAC = paddedComponents.joined().lowercased()
+                            
+                            print("🔍 Found entry - IP: \(ip), MAC: \(foundMAC) (normalized: \(normalizedFoundMAC))")
+                            
+                            // Compare normalized MACs (case-insensitive, separator-agnostic)
+                            if normalizedSavedMAC == normalizedFoundMAC {
+                                print("🔍 ✅ MATCH FOUND! IP: \(ip) for saved MAC: \(macAddress)")
+                                continuation.resume(returning: ip)
+                                return
+                            }
+                        }
+                    }
+                }
+                
+                print("🔍 ❌ No matching MAC found in ARP table")
+                print("🔍 Full ARP output:")
+                print(output)
+                continuation.resume(returning: nil)
+            }
+        }
+    }
+    
+    // MARK: - Debug Helper
+    func testDevicePing(macAddress: String) {
+        Task {
+            print("🧪 Testing ping for device with MAC: \(macAddress)")
+            let result = await pingDevice(macAddress: macAddress)
+            await MainActor.run {
+                let message = "Test ping for \(macAddress): \(result ? "ONLINE" : "OFFLINE")"
+                print("🧪 \(message)")
+                logActivity(message, type: result ? .success : .warning)
+            }
+        }
+    }
+    
+    func testDirectPing(ip: String) {
+        Task {
+            print("🧪 Testing direct ping to IP: \(ip)")
+            let result = await basicPing(ip: ip)
+            await MainActor.run {
+                let message = "Direct ping to \(ip): \(result ? "ONLINE" : "OFFLINE")"
+                print("🧪 \(message)")
+                logActivity(message, type: result ? .success : .warning)
+            }
+        }
+    }
+    
+    func debugSavedDeviceMACs() {
+        print("🔧 === Current Saved Device MACs ===")
+        for (index, device) in savedDevices.enumerated() {
+            let normalizedMAC = device.macAddress.replacingOccurrences(of: ":", with: "")
+                .replacingOccurrences(of: "-", with: "")
+                .replacingOccurrences(of: ".", with: "")
+                .lowercased()
+            print("🔧 Device \(index): '\(device.name)'")
+            print("🔧   Stored MAC: \(device.macAddress)")
+            print("🔧   Normalized: \(normalizedMAC)")
+        }
+        print("🔧 === End Debug ===")
+    }
+    
+    func debugARPTable() {
+        Task {
+            print("🔍 === Full ARP Table Debug ===")
+            
+            let task = Process()
+            task.launchPath = "/usr/sbin/arp"
+            task.arguments = ["-a"]
+            
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = FileHandle.nullDevice
+            
+            task.launch()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            print("🔍 Raw ARP output:")
+            print(output)
+            
+            let lines = output.components(separatedBy: .newlines)
+            print("🔍 Parsed ARP entries:")
+            
+            for (index, line) in lines.enumerated() {
+                guard !line.isEmpty else { continue }
+                print("🔍 Line \(index): \(line)")
+                
+                // Try to extract IP and MAC
+                if let ipMatch = line.range(of: "\\((\\d+\\.\\d+\\.\\d+\\.\\d+)\\)", options: .regularExpression) {
+                    let ip = String(line[ipMatch]).replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "")
+                    print("🔍   -> IP found: \(ip)")
+                    
+                    if let macMatch = line.range(of: "([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})", options: .regularExpression) {
+                        let mac = String(line[macMatch])
+                        print("🔍   -> MAC found: \(mac)")
+                    } else {
+                        print("🔍   -> No MAC found in this line")
+                    }
+                }
+            }
+            
+            print("🔍 === End ARP Table Debug ===")
+        }
+    }
+    
+    func refreshARPTable() {
+        Task {
+            print("🔄 Refreshing ARP table...")
+            
+            // Ping broadcast addresses to populate ARP table
+            let broadcastAddresses = getBroadcastAddresses()
+            
+            for broadcastAddr in broadcastAddresses {
+                let components = broadcastAddr.components(separatedBy: ".")
+                if components.count == 4, let lastOctet = Int(components[3]) {
+                    let networkBase = "\(components[0]).\(components[1]).\(components[2])"
+                    
+                    // Ping a range of IPs to populate ARP table
+                    print("🔄 Pinging range \(networkBase).1-50 to refresh ARP...")
+                    
+                    for i in 1...50 {
+                        let targetIP = "\(networkBase).\(i)"
+                        
+                        // Quick ping without waiting for result
+                        let task = Process()
+                        task.launchPath = "/sbin/ping"
+                        task.arguments = ["-c", "1", "-W", "100", targetIP] // 100ms timeout
+                        task.standardOutput = FileHandle.nullDevice
+                        task.standardError = FileHandle.nullDevice
+                        
+                        task.launch()
+                        // Don't wait for completion, just fire and forget
+                    }
+                }
+            }
+            
+            // Wait a bit for pings to complete
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            
+            print("🔄 ARP table refresh complete")
+            
+            // Now debug the ARP table
+            await debugARPTable()
+        }
+    }
+    
     // MARK: - Validation
     static func isValidMACAddress(_ macAddress: String) -> Bool {
         // Remove any whitespace
@@ -766,6 +1110,7 @@ struct SavedDevice: Identifiable, Codable, Equatable {
     var isOnline: Bool
     let deviceType: DeviceType
     var lastWoken: Date?
+    var lastStatusCheck: Date?
     let createdDate: Date
     
     init(name: String, macAddress: String, isOnline: Bool, deviceType: DeviceType = .generic) {
@@ -775,12 +1120,13 @@ struct SavedDevice: Identifiable, Codable, Equatable {
         self.isOnline = isOnline
         self.deviceType = deviceType
         self.lastWoken = nil
+        self.lastStatusCheck = nil
         self.createdDate = Date()
     }
     
     // Custom Codable implementation to handle UUID properly
     enum CodingKeys: String, CodingKey {
-        case id, name, macAddress, isOnline, deviceType, lastWoken, createdDate
+        case id, name, macAddress, isOnline, deviceType, lastWoken, lastStatusCheck, createdDate
     }
     
     init(from decoder: Decoder) throws {
@@ -791,6 +1137,7 @@ struct SavedDevice: Identifiable, Codable, Equatable {
         isOnline = try container.decode(Bool.self, forKey: .isOnline)
         deviceType = try container.decode(DeviceType.self, forKey: .deviceType)
         lastWoken = try container.decodeIfPresent(Date.self, forKey: .lastWoken)
+        lastStatusCheck = try container.decodeIfPresent(Date.self, forKey: .lastStatusCheck)
         createdDate = try container.decode(Date.self, forKey: .createdDate)
     }
     
@@ -802,6 +1149,7 @@ struct SavedDevice: Identifiable, Codable, Equatable {
         try container.encode(isOnline, forKey: .isOnline)
         try container.encode(deviceType, forKey: .deviceType)
         try container.encodeIfPresent(lastWoken, forKey: .lastWoken)
+        try container.encodeIfPresent(lastStatusCheck, forKey: .lastStatusCheck)
         try container.encode(createdDate, forKey: .createdDate)
     }
     
