@@ -14,6 +14,7 @@ jobs:
     env:
       SCHEME: "LazyPacket 1"
       PROJECT: "LazyPacket.xcodeproj"
+      CONFIGURATION: "Release"
 
     steps:
       - name: Checkout
@@ -30,7 +31,26 @@ jobs:
           xcodebuild build \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
             -destination "platform=macOS" \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM=""
+
+      - name: Package .app
+        run: |
+          APP_PATH="build/Build/Products/$CONFIGURATION/LazyPacket.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Could not find built app at $APP_PATH"
+            find build/Build/Products -maxdepth 2 -name "*.app" || true
+            exit 1
+          fi
+          ditto -c -k --keepParent "$APP_PATH" "LazyPacket.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LazyPacket-${{ github.sha }}
+          path: LazyPacket.zip
+          if-no-files-found: error
