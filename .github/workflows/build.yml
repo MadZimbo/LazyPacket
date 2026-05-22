@@ -46,6 +46,10 @@ jobs:
             find build/Build/Products -maxdepth 2 -name "*.app" || true
             exit 1
           fi
+          # Ad-hoc sign so the binary is valid on Apple Silicon (avoids the
+          # misleading "app is damaged" message that unsigned binaries trigger).
+          codesign --force --deep --sign - "$APP_PATH"
+          codesign --verify --verbose "$APP_PATH"
           ditto -c -k --keepParent "$APP_PATH" "LazyPacket.zip"
 
       - name: Upload artifact
