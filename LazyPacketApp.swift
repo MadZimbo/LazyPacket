@@ -2,38 +2,68 @@ import SwiftUI
 
 @main
 struct LazyPacketApp: App {
+    // Single shared model so the menu bar commands and the window share state.
+    @StateObject private var viewModel = WakeOnLANViewModel()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(viewModel)
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
-            CommandMenu("Device") {
-                Button("Add Device...") {
-                    // This will be handled by the view model
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                
-                Button("Wake Selected Device") {
-                    // This will be handled by the view model
-                }
-                .keyboardShortcut("w", modifiers: .command)
-                
-                Divider()
-                
-                Button("Delete Device") {
-                    // This will be handled by the view model
-                }
-                .keyboardShortcut(.delete)
-            }
+            DeviceCommands(viewModel: viewModel)
         }
-        
+
         #if os(macOS)
         Settings {
             SettingsView()
+                .environmentObject(viewModel)
         }
         #endif
+    }
+}
+
+// MARK: - Menu Bar Commands
+/// Wires the Device menu to real actions. Uses an `@ObservedObject` so the
+/// Wake/Delete items enable and disable as the selection changes.
+struct DeviceCommands: Commands {
+    @ObservedObject var viewModel: WakeOnLANViewModel
+
+    var body: some Commands {
+        CommandMenu("Device") {
+            Button("Add Device…") {
+                viewModel.isPresentingAddDevice = true
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            Button("Wake Selected Device") {
+                if let device = viewModel.selectedDevice {
+                    viewModel.wakeDevice(device)
+                }
+            }
+            // Shift-⌘-W so we don't hijack ⌘W (close window).
+            .keyboardShortcut("w", modifiers: [.command, .shift])
+            .disabled(viewModel.selectedDevice == nil)
+
+            Button("Refresh All Statuses") {
+                viewModel.checkAllDeviceStatus()
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(viewModel.isCheckingDeviceStatus)
+
+            Divider()
+
+            Button("Delete Selected Device") {
+                if let device = viewModel.selectedDevice {
+                    viewModel.deleteDevice(device)
+                }
+            }
+            // ⌘-Delete: the standard "move to trash" shortcut.
+            .keyboardShortcut(.delete, modifiers: .command)
+            .disabled(viewModel.selectedDevice == nil)
+        }
     }
 }
 // MARK: - About & Support Window

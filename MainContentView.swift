@@ -149,66 +149,56 @@ struct WakeControlsCard: View {
                     }
                 }
                 
-                // Action Buttons
-                HStack(spacing: 16) {
-                    // Add/Save Device Button
-                    Button {
-                        if isEditing {
-                            saveDeviceChanges()
-                        } else {
-                            addDevice()
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: isEditing ? "checkmark.circle.fill" : "plus.circle.fill")
-                            Text(isEditing ? "Save Changes" : "Add Device")
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                    }
-                    .buttonStyle(ModernButtonStyle(isEditing ? .primary : .secondary))
-                    .disabled(!isValidMAC || deviceName.isEmpty)
-                    
-                    // Delete Device Button (only visible when editing)
+                // Action Buttons — native bordered styles adopt the macOS 26 look
+                HStack(spacing: 12) {
                     if isEditing {
                         Button {
+                            saveDeviceChanges()
+                        } label: {
+                            Label("Save Changes", systemImage: "checkmark")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!isValidMAC || deviceName.isEmpty)
+
+                        Button(role: .destructive) {
                             deleteSelectedDevice()
                         } label: {
-                            HStack {
-                                Image(systemName: "trash.fill")
-                                Text("Delete")
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
+                            Label("Delete", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(ModernButtonStyle(.danger))
-                    }
-                    
-                    // Wake Button (only show when no device is selected)
-                    if viewModel.selectedDevice == nil {
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    } else {
+                        Button {
+                            addDevice()
+                        } label: {
+                            Label("Add Device", systemImage: "plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!isValidMAC || deviceName.isEmpty)
+
                         Button {
                             sendWakePacket()
                         } label: {
-                            HStack {
+                            HStack(spacing: 6) {
                                 if viewModel.isSending {
                                     ProgressView()
-                                        .scaleEffect(0.8)
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .controlSize(.small)
                                 } else {
                                     Image(systemName: "bolt.fill")
-                                        .scaleEffect(isValidMAC ? 1.1 : 1.0)
-                                        .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isValidMAC)
                                 }
-                                Text(viewModel.isSending ? "Sending..." : "Send Magic Packet")
+                                Text(viewModel.isSending ? "Sending…" : "Send Magic Packet")
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
                         }
-                        .buttonStyle(ModernButtonStyle(.primary))
+                        .buttonStyle(.borderedProminent)
                         .disabled(!isValidMAC || viewModel.isSending)
                         .keyboardShortcut(.return, modifiers: [])
                     }
                 }
+                .controlSize(.large)
             }
         }
         .padding(24)
@@ -317,20 +307,14 @@ struct SelectedDeviceView: View {
                 HStack(spacing: 6) {
                     if viewModel.isSending {
                         ProgressView()
-                            .scaleEffect(0.7)
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .controlSize(.small)
                     } else {
                         Image(systemName: "bolt.fill")
-                            .font(.caption)
                     }
-                    Text(viewModel.isSending ? "Sending..." : "Send Magic Packet")
-                        .font(.caption)
-                        .fontWeight(.semibold)
+                    Text(viewModel.isSending ? "Sending…" : "Send Magic Packet")
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
             }
-            .buttonStyle(ModernButtonStyle(.primary, size: .small))
+            .buttonStyle(.borderedProminent)
             .disabled(viewModel.isSending)
         }
         .padding(16)
@@ -451,113 +435,47 @@ struct EmptyActivityLogView: View {
 }
 
 // MARK: - Card Background
+/// A raised, lightly-vibrant surface that reads correctly in light and dark.
 struct CardBackground: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(Color.cardBackground)
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(.regularMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.borderColor, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
     }
 }
 
-// MARK: - Modern Text Field Style
+// MARK: - Text Field Style
+/// Native-feeling field with live validation tinting. Adapts to appearance.
 struct ModernTextFieldStyle: TextFieldStyle {
     let isValid: Bool?
-    
+
     init(isValid: Bool? = nil) {
         self.isValid = isValid
     }
-    
+
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
+            .textFieldStyle(.plain)
             .font(.system(size: 14, design: .monospaced))
             .foregroundColor(.textPrimary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.appBackground)
-            .cornerRadius(8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(borderColor, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1.5)
             )
     }
-    
-    private var borderColor: Color {
-        guard let isValid = isValid else { return Color.borderColor }
-        return isValid ? Color.successGreen : Color.errorRed
-    }
-}
 
-// MARK: - Modern Button Style
-struct ModernButtonStyle: ButtonStyle {
-    enum ButtonType {
-        case primary, secondary, danger
-    }
-    
-    enum Size {
-        case small, normal, large
-    }
-    
-    let type: ButtonType
-    let size: Size
-    
-    init(_ type: ButtonType, size: Size = .normal) {
-        self.type = type
-        self.size = size
-    }
-    
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(fontForSize)
-            .foregroundColor(foregroundColor)
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .background(backgroundColor)
-            .cornerRadius(8)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-    
-    private var fontForSize: Font {
-        switch size {
-        case .small: return .caption.weight(.semibold)
-        case .normal: return .subheadline.weight(.semibold)
-        case .large: return .headline.weight(.semibold)
-        }
-    }
-    
-    private var horizontalPadding: CGFloat {
-        switch size {
-        case .small: return 12
-        case .normal: return 16
-        case .large: return 20
-        }
-    }
-    
-    private var verticalPadding: CGFloat {
-        switch size {
-        case .small: return 6
-        case .normal: return 8
-        case .large: return 12
-        }
-    }
-    
-    private var backgroundColor: Color {
-        switch type {
-        case .primary: return .primaryBlue
-        case .secondary: return .borderColor
-        case .danger: return .errorRed
-        }
-    }
-    
-    private var foregroundColor: Color {
-        switch type {
-        case .primary: return .white
-        case .secondary: return .textPrimary
-        case .danger: return .white
-        }
+    private var borderColor: Color {
+        guard let isValid = isValid else { return Color(nsColor: .separatorColor) }
+        return isValid ? Color.green : Color.red
     }
 }

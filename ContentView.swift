@@ -1,24 +1,42 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var viewModel = WakeOnLANViewModel()
-    
+    @EnvironmentObject private var viewModel: WakeOnLANViewModel
+
     var body: some View {
         NavigationSplitView {
             DeviceSidebarView()
-                .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
         } detail: {
             MainContentView()
         }
-        .environmentObject(viewModel)
-        .frame(minWidth: 800, minHeight: 600)
-        .background(Color.appBackground)
-        .onAppear {
-            // ViewModel automatically loads devices in init()
+        .frame(minWidth: 820, minHeight: 580)
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    viewModel.isPresentingAddDevice = true
+                    viewModel.triggerHaptic(.light)
+                } label: {
+                    Label("Add Device", systemImage: "plus")
+                }
+                .help("Add a new device (⌘N)")
+            }
+
+            ToolbarItem {
+                Button {
+                    viewModel.checkAllDeviceStatus()
+                    viewModel.triggerHaptic(.light)
+                } label: {
+                    Label("Refresh Status", systemImage: "arrow.clockwise")
+                }
+                .help("Refresh device status (⌘R)")
+                .disabled(viewModel.isCheckingDeviceStatus)
+            }
         }
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(WakeOnLANViewModel())
 }

@@ -2,6 +2,9 @@ import SwiftUI
 import Foundation
 import Combine
 import Network
+#if canImport(AppKit)
+import AppKit
+#endif
 
 #if canImport(Darwin)
 import Darwin
@@ -23,7 +26,9 @@ class WakeOnLANViewModel: ObservableObject {
     @Published var isNetworkActive: Bool = false
     @Published var isSending: Bool = false
     @Published var isCheckingDeviceStatus: Bool = false
-    
+    /// Drives the Add Device sheet; toggled by the toolbar button and the ⌘N command.
+    @Published var isPresentingAddDevice: Bool = false
+
     private let userDefaults = UserDefaults.standard
     private let devicesKey = "SavedDevices"
     private let activityLogKey = "ActivityLog"
@@ -958,7 +963,7 @@ class WakeOnLANViewModel: ObservableObject {
             
             for broadcastAddr in broadcastAddresses {
                 let components = broadcastAddr.components(separatedBy: ".")
-                if components.count == 4, let lastOctet = Int(components[3]) {
+                if components.count == 4, Int(components[3]) != nil {
                     let networkBase = "\(components[0]).\(components[1]).\(components[2])"
                     
                     // Ping a range of IPs to populate ARP table
@@ -986,7 +991,7 @@ class WakeOnLANViewModel: ObservableObject {
             print("🔄 ARP table refresh complete")
             
             // Now debug the ARP table
-            await debugARPTable()
+            debugARPTable()
         }
     }
     
@@ -1048,6 +1053,16 @@ class WakeOnLANViewModel: ObservableObject {
             let selectionFeedback = UISelectionFeedbackGenerator()
             selectionFeedback.selectionChanged()
         }
+        #elseif os(macOS)
+        // macOS surfaces haptics through the trackpad via NSHapticFeedbackManager.
+        let pattern: NSHapticFeedbackManager.FeedbackPattern
+        switch style {
+        case .light, .medium, .heavy, .selection:
+            pattern = .alignment
+        case .success, .warning, .error:
+            pattern = .levelChange
+        }
+        NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
         #endif
     }
 }

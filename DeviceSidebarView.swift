@@ -4,8 +4,7 @@ import SwiftUI
 struct DeviceSidebarView: View {
     @EnvironmentObject var viewModel: WakeOnLANViewModel
     @State private var searchText = ""
-    @State private var showingAddDevice = false
-    
+
     var filteredDevices: [SavedDevice] {
         if searchText.isEmpty {
             return viewModel.savedDevices
@@ -16,234 +15,114 @@ struct DeviceSidebarView: View {
             }
         }
     }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 16) {
-                HStack {
-                    Image(systemName: "network")
-                        .foregroundColor(.primaryBlue)
-                        .font(.title2)
-                        .symbolRenderingMode(.hierarchical)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Devices")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.textPrimary)
-                        
-                        Text("\(viewModel.savedDevices.count) saved")
-                            .font(.caption)
-                            .foregroundColor(.textSecondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Button {
-                        showingAddDevice = true
-                        viewModel.triggerHaptic(.light)
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title3)
-                            .foregroundColor(.primaryBlue)
-                            .symbolRenderingMode(.hierarchical)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Add new device")
-                    
-                    Button {
-                        viewModel.checkAllDeviceStatus()
-                        viewModel.triggerHaptic(.light)
-                    } label: {
-                        Image(systemName: viewModel.isCheckingDeviceStatus ? "arrow.clockwise" : "arrow.clockwise.circle")
-                            .font(.title3)
-                            .foregroundColor(.primaryBlue)
-                            .symbolRenderingMode(.hierarchical)
-                            .rotationEffect(.degrees(viewModel.isCheckingDeviceStatus ? 360 : 0))
-                            .animation(
-                                viewModel.isCheckingDeviceStatus ? 
-                                .linear(duration: 1.0).repeatForever(autoreverses: false) : .default,
-                                value: viewModel.isCheckingDeviceStatus
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Refresh device status")
-                    .disabled(viewModel.isCheckingDeviceStatus)
+
+    /// Bridges the native List selection to the view model's selected device.
+    private var selection: Binding<UUID?> {
+        Binding(
+            get: { viewModel.selectedDevice?.id },
+            set: { id in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    viewModel.selectedDevice = viewModel.savedDevices.first { $0.id == id }
                 }
-                
-                // Search bar
-                SearchBar(text: $searchText)
+                viewModel.triggerHaptic(.selection)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
-            
-            Divider()
-                .background(Color.borderColor)
-            
-            // Device list
+        )
+    }
+
+    var body: some View {
+        List(selection: selection) {
+            Section {
+                ForEach(filteredDevices) { device in
+                    DeviceRowView(device: device)
+                    .tag(device.id)
+                    .contextMenu {
+                        DeviceContextMenu(device: device)
+                            .environmentObject(viewModel)
+                    }
+                }
+            } header: {
+                Text("\(viewModel.savedDevices.count) Saved")
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("Devices")
+        .searchable(text: $searchText, placement: .sidebar, prompt: "Search devices")
+        .overlay {
             if filteredDevices.isEmpty {
                 EmptyDeviceListView(hasDevices: !viewModel.savedDevices.isEmpty)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(filteredDevices) { device in
-                            DeviceRowView(
-                                device: device,
-                                isSelected: viewModel.selectedDevice?.id == device.id
-                            )
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    viewModel.selectDevice(device)
-                                }
-                                viewModel.triggerHaptic(.selection)
-                            }
-                            .contextMenu {
-                                DeviceContextMenu(device: device)
-                                    .environmentObject(viewModel)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                }
             }
-            
-            Spacer()
-            
-            // Status footer
-            StatusFooterView()
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
         }
-        .background(Color.cardBackground)
-        .sheet(isPresented: $showingAddDevice) {
+        .safeAreaInset(edge: .bottom) {
+            StatusFooterView()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.bar)
+        }
+        .sheet(isPresented: $viewModel.isPresentingAddDevice) {
             AddDeviceSheet()
                 .environmentObject(viewModel)
         }
     }
 }
 
-// MARK: - Search Bar
-struct SearchBar: View {
-    @Binding var text: String
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.textSecondary)
-                .font(.system(size: 14))
-            
-            TextField("Search devices...", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundColor(.textPrimary)
-                .focused($isFocused)
-            
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.textSecondary)
-                        .font(.system(size: 14))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.appBackground)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isFocused ? Color.primaryBlue : Color.borderColor, lineWidth: 1)
-        )
-    }
-}
-
 // MARK: - Device Row
 struct DeviceRowView: View {
     let device: SavedDevice
-    let isSelected: Bool
     @State private var isHovered = false
     @EnvironmentObject var viewModel: WakeOnLANViewModel
     
     var body: some View {
         HStack(spacing: 12) {
-            // Device status indicator
-            DeviceStatusIndicator(device: device)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(device.name)
+            // Device type icon in a tinted rounded square
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 30, height: 30)
+
+                Image(systemName: device.deviceType.icon)
                     .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .symbolRenderingMode(.hierarchical)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(device.name)
+                    .font(.body)
                     .foregroundColor(.textPrimary)
                     .lineLimit(1)
-                
+
                 Text(device.macAddress)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.textSecondary)
                     .lineLimit(1)
             }
-            
-            Spacer()
-            
-            // Wake button (visible on hover or selection)
-            if isHovered || isSelected {
+
+            Spacer(minLength: 8)
+
+            // Wake button (revealed on hover)
+            if isHovered {
                 Button {
                     viewModel.wakeDevice(device)
                     viewModel.triggerHaptic(.medium)
                 } label: {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(.primaryBlue)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .help("Wake \(device.name)")
                 .transition(.scale.combined(with: .opacity))
             }
-            
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.primaryBlue)
-                    .font(.system(size: 16))
-                    .symbolRenderingMode(.hierarchical)
-            }
+
+            // Status dot
+            DeviceStatusIndicator(device: device)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(backgroundFill)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(borderColor, lineWidth: isSelected ? 1 : 0)
-        )
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovering
             }
         }
-        .scaleEffect(isHovered && !isSelected ? 1.02 : 1.0)
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-    }
-    
-    private var backgroundFill: Color {
-        if isSelected {
-            return .primaryBlue.opacity(0.15)
-        } else if isHovered {
-            return .borderColor.opacity(0.5)
-        } else {
-            return .clear
-        }
-    }
-    
-    private var borderColor: Color {
-        isSelected ? .primaryBlue : .clear
     }
 }
 
@@ -385,18 +264,15 @@ struct StatusFooterView: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            Divider()
-                .background(Color.borderColor)
-            
             HStack {
                 Image(systemName: statusIcon)
                     .foregroundColor(.textSecondary)
                     .font(.caption)
-                
+
                 Text(statusText)
                     .font(.caption)
                     .foregroundColor(.textSecondary)
-                
+
                 Spacer()
                 
                 if viewModel.isNetworkActive {

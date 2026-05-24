@@ -1,20 +1,30 @@
 import SwiftUI
 
 // MARK: - Color System
+//
+// All colors are semantic and adaptive: they follow the user's Light/Dark
+// appearance and the system accent color automatically. Nothing is hardcoded
+// to a single appearance, so the app feels native on macOS 26.
 extension Color {
-    static let appBackground = Color(red: 0.11, green: 0.11, blue: 0.12)
-    static let cardBackground = Color(red: 0.15, green: 0.15, blue: 0.16)
-    static let primaryBlue = Color(red: 0.0, green: 0.48, blue: 1.0)
-    static let successGreen = Color(red: 0.2, green: 0.78, blue: 0.35)
-    static let warningYellow = Color(red: 1.0, green: 0.8, blue: 0.0)
-    static let errorRed = Color(red: 1.0, green: 0.27, blue: 0.23)
-    
+    /// Window background — adapts to the active appearance.
+    static let appBackground = Color(nsColor: .windowBackgroundColor)
+    /// Raised surface for cards/rows. Pair with `.regularMaterial` for glass.
+    static let cardBackground = Color(nsColor: .controlBackgroundColor)
+
+    /// Primary tint follows the user's chosen system accent color.
+    static let primaryBlue = Color.accentColor
+
+    /// Status colors use system semantics so they adapt across appearances.
+    static let successGreen = Color.green
+    static let warningYellow = Color.orange
+    static let errorRed = Color.red
+
     // Text colors
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
-    static let textTertiary = Color(white: 0.6)
-    
+    static let textTertiary = Color(nsColor: .tertiaryLabelColor)
+
     // Border colors
-    static let borderColor = Color(white: 0.3, opacity: 0.5)
-    static let borderHighlight = Color.primaryBlue.opacity(0.6)
+    static let borderColor = Color(nsColor: .separatorColor)
+    static let borderHighlight = Color.accentColor.opacity(0.6)
 }

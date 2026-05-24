@@ -38,7 +38,8 @@ struct AddDeviceSheet: View {
                     Button("Add Device") {
                         saveDevice()
                     }
-                    .buttonStyle(ModernButtonStyle(.primary, size: .small))
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: [])
                     .disabled(!canSave)
                 }
                 
@@ -136,9 +137,9 @@ struct AddDeviceSheet: View {
             
             Spacer()
         }
-        .padding(32)
-        .frame(width: 600, height: 700)
-        .background(Color.cardBackground)
+        .padding(28)
+        .frame(width: 480, height: 620)
+        .background(.regularMaterial)
         .onAppear {
             nameFieldIsFocused = true
         }
